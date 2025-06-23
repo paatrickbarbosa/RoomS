@@ -1,4 +1,5 @@
 import { pgTable, text, serial, integer, boolean, timestamp, json } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -17,7 +18,7 @@ export const rooms = pgTable("rooms", {
   name: text("name").notNull(),
   capacity: integer("capacity").notNull(),
   type: text("type").notNull(), // "conference", "meeting", "event", "huddle"
-  amenities: json("amenities").$type<string[]>().notNull().default("[]"),
+  amenities: json("amenities").$type<string[]>().notNull().default([]),
   hourlyRate: integer("hourly_rate").notNull(), // in cents
   imageUrl: text("image_url"),
   description: text("description"),
@@ -47,7 +48,7 @@ export const activities = pgTable("activities", {
   userId: integer("user_id").references(() => users.id),
   type: text("type").notNull(), // "booking_created", "booking_cancelled", "calendar_synced", etc.
   description: text("description").notNull(),
-  metadata: json("metadata").$type<Record<string, any>>().default("{}"),
+  metadata: json("metadata").$type<Record<string, any>>().default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -101,3 +102,31 @@ export type DashboardStats = {
   pendingBookings: number;
   revenueToday: number;
 };
+
+// Define relations for better querying
+export const usersRelations = relations(users, ({ many }) => ({
+  bookings: many(bookings),
+  activities: many(activities),
+}));
+
+export const roomsRelations = relations(rooms, ({ many }) => ({
+  bookings: many(bookings),
+}));
+
+export const bookingsRelations = relations(bookings, ({ one }) => ({
+  user: one(users, {
+    fields: [bookings.userId],
+    references: [users.id],
+  }),
+  room: one(rooms, {
+    fields: [bookings.roomId],
+    references: [rooms.id],
+  }),
+}));
+
+export const activitiesRelations = relations(activities, ({ one }) => ({
+  user: one(users, {
+    fields: [activities.userId],
+    references: [users.id],
+  }),
+}));
