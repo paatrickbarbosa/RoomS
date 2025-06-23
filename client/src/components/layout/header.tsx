@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Building2, ChevronDown } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Bell, Building2, ChevronDown, Settings, LogOut, User } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,16 +10,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuth, useLogout } from "@/hooks/useAuth";
 
 export function Header() {
   const [location] = useLocation();
+  const { user, isAdmin } = useAuth();
+  const logoutMutation = useLogout();
 
   const navigation = [
-    { name: "Dashboard", href: "/dashboard", current: location === "/" || location === "/dashboard" },
+    { name: "Dashboard", href: "/", current: location === "/" || location === "/dashboard" },
     { name: "Rooms", href: "/rooms", current: location === "/rooms" },
     { name: "Calendar", href: "/calendar", current: location === "/calendar" },
     { name: "My Bookings", href: "/bookings", current: location === "/bookings" },
+    ...(isAdmin ? [{ name: "Admin", href: "/admin", current: location === "/admin" }] : []),
   ];
+
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
 
   return (
     <header className="bg-card shadow-sm border-b border-border sticky top-0 z-50">
@@ -55,25 +64,49 @@ export function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-medium text-sm">
-                    JD
-                  </div>
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>
+                      {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
                   <span className="hidden md:block text-sm font-medium text-gray-700">
-                    John Doe
+                    {user?.name || 'User'}
                   </span>
                   <ChevronDown className="w-4 h-4 text-gray-400" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem>
-                  Profile Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  Notification Preferences
-                </DropdownMenuItem>
+                <div className="flex items-center justify-start gap-2 p-2">
+                  <div className="flex flex-col space-y-1 leading-none">
+                    <p className="font-medium">{user?.name}</p>
+                    <p className="w-[200px] truncate text-sm text-muted-foreground">
+                      {user?.email}
+                    </p>
+                  </div>
+                </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
-                  Sign Out
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile Settings</span>
+                </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin">
+                      <div className="flex items-center w-full">
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Admin Panel</span>
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-red-600 focus:text-red-600"
+                  onClick={handleLogout}
+                  disabled={logoutMutation.isPending}
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>{logoutMutation.isPending ? 'Logging out...' : 'Sign Out'}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

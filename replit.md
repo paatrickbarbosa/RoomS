@@ -71,10 +71,13 @@ The build process creates a `dist` directory with:
 - Static frontend assets in `dist/public`
 - Bundled backend server in `dist/index.js`
 
-## Changelog
+## Recent Changes
 
-Changelog:
-- June 23, 2025. Initial setup
+- June 23, 2025: PostgreSQL database integration completed
+- June 23, 2025: Admin authentication system implemented with JWT tokens
+- June 23, 2025: Admin panel created with full CRUD operations for users and rooms
+- June 23, 2025: Role-based access control added (admin/user roles)
+- June 23, 2025: Secure password hashing with bcrypt implemented
 
 ## User Preferences
 

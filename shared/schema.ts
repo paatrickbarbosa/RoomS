@@ -10,7 +10,10 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("user"), // "user" or "admin"
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const rooms = pgTable("rooms", {
@@ -56,6 +59,8 @@ export const activities = pgTable("activities", {
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
+  lastLoginAt: true,
 });
 
 export const insertRoomSchema = createInsertSchema(rooms).omit({
@@ -71,6 +76,12 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({
 export const insertActivitySchema = createInsertSchema(activities).omit({
   id: true,
   createdAt: true,
+});
+
+// Auth schemas
+export const loginSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 // Types

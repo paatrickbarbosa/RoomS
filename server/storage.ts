@@ -17,6 +17,10 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
+  getAllUsers(): Promise<User[]>;
+  updateLastLogin(id: number): Promise<void>;
   
   // Rooms
   getAllRooms(): Promise<Room[]>;
@@ -384,6 +388,31 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async updateUser(id: number, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ ...userUpdate, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user || undefined;
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    const result = await db.delete(users).where(eq(users.id, id));
+    return result.rowCount > 0;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async updateLastLogin(id: number): Promise<void> {
+    await db
+      .update(users)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(users.id, id));
+  }
+
   // Rooms
   async getAllRooms(): Promise<Room[]> {
     return await db.select().from(rooms).where(eq(rooms.isActive, true));
@@ -631,16 +660,21 @@ export class DatabaseStorage implements IStorage {
 // Initialize database storage and seed data
 async function initializeDatabase() {
   try {
-    // Create default user if doesn't exist
-    const existingUser = await db.select().from(users).where(eq(users.username, "johndoe"));
+    // Create default admin user if doesn't exist
+    const existingUser = await db.select().from(users).where(eq(users.username, "admin"));
     
     if (existingUser.length === 0) {
+      // Import here to avoid circular dependency
+      const bcrypt = require('bcrypt');
+      const hashedPassword = await bcrypt.hash("admin123", 10);
+      
       await db.insert(users).values({
-        username: "johndoe",
-        password: "password123",
+        username: "admin",
+        password: hashedPassword,
         role: "admin",
-        name: "John Doe",
-        email: "john@example.com",
+        name: "System Administrator",
+        email: "admin@roomsync.com",
+        isActive: true,
       });
     }
 

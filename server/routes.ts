@@ -2,8 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertBookingSchema, insertRoomSchema, insertActivitySchema } from "@shared/schema";
+import { insertBookingSchema, insertRoomSchema, insertActivitySchema, insertUserSchema, loginSchema } from "@shared/schema";
 import { z } from "zod";
+import { hashPassword, comparePassword, generateToken, authenticateToken, requireAdmin, requireAuth, type AuthRequest } from "./auth";
 
 // WebSocket connection management
 const wsConnections = new Set<WebSocket>();
@@ -36,8 +37,205 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Dashboard routes
-  app.get("/api/dashboard/stats", async (req, res) => {
+  // Auth routes
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = loginSchema.parse(req.body);
+      
+      const user = await storage.getUserByUsername(username);
+      if (!user) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      if (!user.isActive) {
+        return res.status(401).json({ message: "Account is inactive" });
+      }
+
+      const isPasswordValid = await comparePassword(password, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Update last login
+      await storage.updateLastLogin(user.id);
+
+      const token = generateToken({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        name: user.name,
+        email: user.email,
+      });
+
+      // Log activity
+      await storage.createActivity({
+        userId: user.id,
+        type: "user_login",
+        description: `User ${user.username} logged in`,
+        metadata: { userAgent: req.headers['user-agent'] || 'unknown' },
+      });
+
+      res.json({
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          name: user.name,
+          email: user.email,
+        },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", authenticateToken, async (req: AuthRequest, res) => {
+    try {
+      if (req.user) {
+        await storage.createActivity({
+          userId: req.user.id,
+          type: "user_logout",
+          description: `User ${req.user.username} logged out`,
+          metadata: {},
+        });
+      }
+      res.json({ message: "Logged out successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Logout failed" });
+    }
+  });
+
+  app.get("/api/auth/me", authenticateToken, async (req: AuthRequest, res) => {
+    res.json(req.user);
+  });
+
+  // User management routes (Admin only)
+  app.get("/api/users", authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      // Don't send passwords in response
+      const safeUsers = users.map(({ password, ...user }) => user);
+      res.json(safeUsers);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.post("/api/users", authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const userData = insertUserSchema.parse(req.body);
+      
+      // Check if username or email already exists
+      const existingUser = await storage.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const existingEmail = await storage.getUserByEmail(userData.email);
+      if (existingEmail) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+
+      // Hash password
+      const hashedPassword = await hashPassword(userData.password);
+      
+      const user = await storage.createUser({
+        ...userData,
+        password: hashedPassword,
+      });
+
+      // Log activity
+      await storage.createActivity({
+        userId: req.user!.id,
+        type: "user_created",
+        description: `User ${user.username} was created by admin`,
+        metadata: { createdUserId: user.id },
+      });
+
+      // Don't send password in response
+      const { password, ...safeUser } = user;
+      res.status(201).json(safeUser);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid user data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create user" });
+    }
+  });
+
+  app.put("/api/users/:id", authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userData = insertUserSchema.partial().parse(req.body);
+      
+      // Hash password if provided
+      if (userData.password) {
+        userData.password = await hashPassword(userData.password);
+      }
+
+      const user = await storage.updateUser(id, userData);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Log activity
+      await storage.createActivity({
+        userId: req.user!.id,
+        type: "user_updated",
+        description: `User ${user.username} was updated by admin`,
+        metadata: { updatedUserId: user.id },
+      });
+
+      // Don't send password in response
+      const { password, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid user data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.delete("/api/users/:id", authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      // Prevent admin from deleting themselves
+      if (id === req.user!.id) {
+        return res.status(400).json({ message: "Cannot delete your own account" });
+      }
+
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const deleted = await storage.deleteUser(id);
+      if (!deleted) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Log activity
+      await storage.createActivity({
+        userId: req.user!.id,
+        type: "user_deleted",
+        description: `User ${user.username} was deleted by admin`,
+        metadata: { deletedUserId: id },
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete user" });
+    }
+  });
+
+  // Dashboard routes (require auth)
+  app.get("/api/dashboard/stats", authenticateToken, async (req, res) => {
     try {
       const stats = await storage.getDashboardStats();
       res.json(stats);
@@ -46,7 +244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/dashboard/todays-bookings", async (req, res) => {
+  app.get("/api/dashboard/todays-bookings", authenticateToken, async (req, res) => {
     try {
       const bookings = await storage.getTodaysBookings();
       res.json(bookings);
@@ -55,7 +253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/dashboard/recent-activities", async (req, res) => {
+  app.get("/api/dashboard/recent-activities", authenticateToken, async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 10;
       const activities = await storage.getRecentActivities(limit);
@@ -65,8 +263,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Room routes
-  app.get("/api/rooms", async (req, res) => {
+  // Room routes (viewing requires auth, CRUD requires admin)
+  app.get("/api/rooms", authenticateToken, async (req, res) => {
     try {
       const date = req.query.date ? new Date(req.query.date as string) : new Date();
       const rooms = await storage.getRoomsWithStatus(date);
@@ -76,7 +274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/rooms/:id", async (req, res) => {
+  app.get("/api/rooms/:id", authenticateToken, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const room = await storage.getRoom(id);
@@ -89,7 +287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/rooms", async (req, res) => {
+  app.post("/api/rooms", authenticateToken, requireAdmin, async (req, res) => {
     try {
       const roomData = insertRoomSchema.parse(req.body);
       const room = await storage.createRoom(roomData);
@@ -113,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/rooms/:id", async (req, res) => {
+  app.put("/api/rooms/:id", authenticateToken, requireAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const roomData = insertRoomSchema.partial().parse(req.body);
@@ -142,7 +340,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/rooms/:id", async (req, res) => {
+  app.delete("/api/rooms/:id", authenticateToken, requireAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const room = await storage.getRoom(id);
@@ -173,8 +371,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Booking routes
-  app.get("/api/bookings", async (req, res) => {
+  // Booking routes (require auth)
+  app.get("/api/bookings", authenticateToken, async (req, res) => {
     try {
       const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
       let bookings;
@@ -191,7 +389,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/bookings/:id", async (req, res) => {
+  app.get("/api/bookings/:id", authenticateToken, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const booking = await storage.getBooking(id);
@@ -206,7 +404,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/bookings", async (req, res) => {
+  app.post("/api/bookings", authenticateToken, async (req, res) => {
     try {
       const bookingData = insertBookingSchema.parse(req.body);
       
@@ -244,7 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/bookings/:id", async (req, res) => {
+  app.put("/api/bookings/:id", authenticateToken, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const bookingData = insertBookingSchema.partial().parse(req.body);
@@ -295,7 +493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/bookings/:id", async (req, res) => {
+  app.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const booking = await storage.getBooking(id);
@@ -327,7 +525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/bookings/:id/check-availability", async (req, res) => {
+  app.post("/api/bookings/:id/check-availability", authenticateToken, async (req, res) => {
     try {
       const { roomId, startTime, endTime } = req.body;
       const id = parseInt(req.params.id);
