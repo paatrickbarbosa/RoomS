@@ -141,6 +141,7 @@ export class MemStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const user: User = {
       ...insertUser,
+      role: insertUser.role || "user",
       id: this.currentUserId++,
       createdAt: new Date(),
     };
@@ -160,6 +161,10 @@ export class MemStorage implements IStorage {
   async createRoom(insertRoom: InsertRoom): Promise<Room> {
     const room: Room = {
       ...insertRoom,
+      amenities: insertRoom.amenities || [],
+      imageUrl: insertRoom.imageUrl || null,
+      description: insertRoom.description || null,
+      isActive: insertRoom.isActive !== undefined ? insertRoom.isActive : true,
       id: this.currentRoomId++,
       createdAt: new Date(),
     };
@@ -272,6 +277,12 @@ export class MemStorage implements IStorage {
   async createBooking(insertBooking: InsertBooking): Promise<Booking> {
     const booking: Booking = {
       ...insertBooking,
+      description: insertBooking.description || null,
+      status: insertBooking.status || "confirmed",
+      isRecurring: insertBooking.isRecurring || false,
+      recurringType: insertBooking.recurringType || null,
+      recurringEndDate: insertBooking.recurringEndDate || null,
+      googleCalendarEventId: insertBooking.googleCalendarEventId || null,
       id: this.currentBookingId++,
       createdAt: new Date(),
     };
@@ -314,6 +325,8 @@ export class MemStorage implements IStorage {
   async createActivity(insertActivity: InsertActivity): Promise<Activity> {
     const activity: Activity = {
       ...insertActivity,
+      userId: insertActivity.userId || null,
+      metadata: insertActivity.metadata || {},
       id: this.currentActivityId++,
       createdAt: new Date(),
     };

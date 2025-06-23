@@ -98,7 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createActivity({
         type: "room_created",
         description: `Room "${room.name}" was created`,
-        metadata: { roomId: room.id },
+        metadata: { roomId: room.id }
       });
       
       // Broadcast update
@@ -127,7 +127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createActivity({
         type: "room_updated",
         description: `Room "${room.name}" was updated`,
-        metadata: { roomId: room.id },
+        metadata: { roomId: room.id }
       });
       
       // Broadcast update
@@ -161,7 +161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createActivity({
         type: "room_deleted",
         description: `Room "${room.name}" was deleted`,
-        metadata: { roomId: id },
+        metadata: { roomId: id }
       });
       
       // Broadcast update
@@ -229,7 +229,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: booking.userId,
         type: "booking_created",
         description: `Booking "${booking.title}" was created`,
-        metadata: { bookingId: booking.id, roomId: booking.roomId },
+        metadata: { bookingId: booking.id, roomId: booking.roomId }
       });
       
       // Broadcast update
@@ -280,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: booking.userId,
         type: "booking_updated",
         description: `Booking "${booking.title}" was updated`,
-        metadata: { bookingId: booking.id, roomId: booking.roomId },
+        metadata: { bookingId: booking.id, roomId: booking.roomId }
       });
       
       // Broadcast update
@@ -315,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: booking.userId,
         type: "booking_cancelled",
         description: `Booking "${booking.title}" was cancelled`,
-        metadata: { bookingId: id, roomId: booking.roomId },
+        metadata: { bookingId: id, roomId: booking.roomId }
       });
       
       // Broadcast update

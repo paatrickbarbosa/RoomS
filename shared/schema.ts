@@ -17,7 +17,7 @@ export const rooms = pgTable("rooms", {
   name: text("name").notNull(),
   capacity: integer("capacity").notNull(),
   type: text("type").notNull(), // "conference", "meeting", "event", "huddle"
-  amenities: json("amenities").$type<string[]>().notNull().default([]),
+  amenities: json("amenities").$type<string[]>().notNull().default("[]"),
   hourlyRate: integer("hourly_rate").notNull(), // in cents
   imageUrl: text("image_url"),
   description: text("description"),
@@ -47,7 +47,7 @@ export const activities = pgTable("activities", {
   userId: integer("user_id").references(() => users.id),
   type: text("type").notNull(), // "booking_created", "booking_cancelled", "calendar_synced", etc.
   description: text("description").notNull(),
-  metadata: json("metadata").$type<Record<string, any>>().default({}),
+  metadata: json("metadata").$type<Record<string, any>>().default("{}"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
