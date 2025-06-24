@@ -1,4 +1,4 @@
-import { 
+import {
   users, rooms, bookings, activities,
   type User, type InsertUser,
   type Room, type InsertRoom,
@@ -21,7 +21,7 @@ export interface IStorage {
   deleteUser(id: number): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   updateLastLogin(id: number): Promise<void>;
-  
+
   // Rooms
   getAllRooms(): Promise<Room[]>;
   getRoom(id: number): Promise<Room | undefined>;
@@ -29,7 +29,7 @@ export interface IStorage {
   updateRoom(id: number, room: Partial<InsertRoom>): Promise<Room | undefined>;
   deleteRoom(id: number): Promise<boolean>;
   getRoomsWithStatus(date?: Date): Promise<RoomWithStatus[]>;
-  
+
   // Bookings
   getAllBookings(): Promise<BookingWithDetails[]>;
   getBooking(id: number): Promise<BookingWithDetails | undefined>;
@@ -40,11 +40,11 @@ export interface IStorage {
   updateBooking(id: number, booking: Partial<InsertBooking>): Promise<Booking | undefined>;
   deleteBooking(id: number): Promise<boolean>;
   checkRoomAvailability(roomId: number, startTime: Date, endTime: Date, excludeBookingId?: number): Promise<boolean>;
-  
+
   // Activities
   getRecentActivities(limit?: number): Promise<Activity[]>;
   createActivity(activity: InsertActivity): Promise<Activity>;
-  
+
   // Dashboard
   getDashboardStats(date?: Date): Promise<DashboardStats>;
 }
@@ -181,7 +181,7 @@ export class MemStorage implements IStorage {
   async updateRoom(id: number, roomUpdate: Partial<InsertRoom>): Promise<Room | undefined> {
     const room = this.rooms.get(id);
     if (!room) return undefined;
-    
+
     const updatedRoom = { ...room, ...roomUpdate };
     this.rooms.set(id, updatedRoom);
     return updatedRoom;
@@ -203,11 +203,11 @@ export class MemStorage implements IStorage {
       endOfDay.setHours(23, 59, 59, 999);
 
       const roomBookings = await this.getBookingsByRoom(room.id, startOfDay, endOfDay);
-      
-      const currentBooking = roomBookings.find(booking => 
+
+      const currentBooking = roomBookings.find(booking =>
         booking.startTime <= now && booking.endTime > now && booking.status === 'confirmed'
       );
-      
+
       const futureBookings = roomBookings
         .filter(booking => booking.startTime > now && booking.status === 'confirmed')
         .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
@@ -257,13 +257,13 @@ export class MemStorage implements IStorage {
 
   async getBookingsByRoom(roomId: number, startDate?: Date, endDate?: Date): Promise<Booking[]> {
     let roomBookings = Array.from(this.bookings.values()).filter(booking => booking.roomId === roomId);
-    
+
     if (startDate && endDate) {
-      roomBookings = roomBookings.filter(booking => 
+      roomBookings = roomBookings.filter(booking =>
         booking.startTime < endDate && booking.endTime > startDate
       );
     }
-    
+
     return roomBookings;
   }
 
@@ -275,7 +275,7 @@ export class MemStorage implements IStorage {
     endOfDay.setHours(23, 59, 59, 999);
 
     const allBookings = await this.getAllBookings();
-    return allBookings.filter(booking => 
+    return allBookings.filter(booking =>
       booking.startTime >= startOfDay && booking.startTime < endOfDay
     ).sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
   }
@@ -299,7 +299,7 @@ export class MemStorage implements IStorage {
   async updateBooking(id: number, bookingUpdate: Partial<InsertBooking>): Promise<Booking | undefined> {
     const booking = this.bookings.get(id);
     if (!booking) return undefined;
-    
+
     const updatedBooking = { ...booking, ...bookingUpdate };
     this.bookings.set(id, updatedBooking);
     return updatedBooking;
@@ -310,13 +310,13 @@ export class MemStorage implements IStorage {
   }
 
   async checkRoomAvailability(roomId: number, startTime: Date, endTime: Date, excludeBookingId?: number): Promise<boolean> {
-    const roomBookings = Array.from(this.bookings.values()).filter(booking => 
-      booking.roomId === roomId && 
+    const roomBookings = Array.from(this.bookings.values()).filter(booking =>
+      booking.roomId === roomId &&
       booking.status === 'confirmed' &&
       booking.id !== excludeBookingId
     );
 
-    return !roomBookings.some(booking => 
+    return !roomBookings.some(booking =>
       booking.startTime < endTime && booking.endTime > startTime
     );
   }
@@ -457,11 +457,11 @@ export class DatabaseStorage implements IStorage {
       endOfDay.setHours(23, 59, 59, 999);
 
       const roomBookings = await this.getBookingsByRoom(room.id, startOfDay, endOfDay);
-      
-      const currentBooking = roomBookings.find(booking => 
+
+      const currentBooking = roomBookings.find(booking =>
         booking.startTime <= now && booking.endTime > now && booking.status === 'confirmed'
       );
-      
+
       const futureBookings = roomBookings
         .filter(booking => booking.startTime > now && booking.status === 'confirmed')
         .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
@@ -529,7 +529,7 @@ export class DatabaseStorage implements IStorage {
 
   async getBookingsByRoom(roomId: number, startDate?: Date, endDate?: Date): Promise<Booking[]> {
     let query = db.select().from(bookings).where(eq(bookings.roomId, roomId));
-    
+
     if (startDate && endDate) {
       query = query.where(
         and(
@@ -538,7 +538,7 @@ export class DatabaseStorage implements IStorage {
         )
       );
     }
-    
+
     return await query;
   }
 
@@ -637,12 +637,12 @@ export class DatabaseStorage implements IStorage {
 
     const availableRooms = roomsWithStatus.filter(room => room.isAvailable).length;
     const bookedToday = todaysBookings.filter(booking => booking.status === 'confirmed').length;
-    
+
     const [pendingResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(bookings)
       .where(eq(bookings.status, 'pending'));
-    
+
     const revenueToday = todaysBookings
       .filter(booking => booking.status === 'confirmed')
       .reduce((sum, booking) => sum + booking.totalCost, 0);
@@ -657,17 +657,16 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-// Initialize database storage and seed data
 async function initializeDatabase() {
   try {
     // Create default admin user if doesn't exist
     const existingUser = await db.select().from(users).where(eq(users.username, "admin"));
-    
+
     if (existingUser.length === 0) {
-      // Import here to avoid circular dependency
+      // Import dinamicamente para evitar dependência circular e problema com require
       const bcrypt = await import('bcrypt');
       const hashedPassword = await bcrypt.hash("admin123", 10);
-      
+
       await db.insert(users).values({
         username: "admin",
         password: hashedPassword,
@@ -678,9 +677,10 @@ async function initializeDatabase() {
       });
     }
 
+
     // Create sample rooms if they don't exist
     const existingRooms = await db.select().from(rooms);
-    
+
     if (existingRooms.length === 0) {
       await db.insert(rooms).values([
         {
