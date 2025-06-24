@@ -665,7 +665,7 @@ async function initializeDatabase() {
     
     if (existingUser.length === 0) {
       // Import here to avoid circular dependency
-      const bcrypt = require('bcrypt');
+      const bcrypt = await import('bcrypt');
       const hashedPassword = await bcrypt.hash("admin123", 10);
       
       await db.insert(users).values({

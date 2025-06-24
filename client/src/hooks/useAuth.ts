@@ -53,6 +53,43 @@ export function useLogin() {
   });
 }
 
+export function useRegister() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (userData: { username: string; password: string; name: string; email: string }) => {
+      const response = await apiRequest("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify(userData),
+      });
+      return response;
+    },
+    onSuccess: (data) => {
+      // Store token
+      localStorage.setItem('auth_token', data.token);
+      
+      // Update auth state
+      queryClient.setQueryData(["/api/auth/me"], data.user);
+      
+      toast({
+        title: "Account created",
+        description: `Welcome to RoomSync, ${data.user.name}!`,
+      });
+      
+      // Invalidate all queries to refetch with new auth
+      queryClient.invalidateQueries();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Registration failed",
+        description: error.message || "Failed to create account",
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   const { toast } = useToast();

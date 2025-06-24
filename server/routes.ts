@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertBookingSchema, insertRoomSchema, insertActivitySchema, insertUserSchema, loginSchema } from "@shared/schema";
+import { insertBookingSchema, insertRoomSchema, insertActivitySchema, insertUserSchema, loginSchema, registerSchema } from "@shared/schema";
 import { z } from "zod";
 import { hashPassword, comparePassword, generateToken, authenticateToken, requireAdmin, requireAuth, type AuthRequest } from "./auth";
 
@@ -106,6 +106,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Logged out successfully" });
     } catch (error) {
       res.status(500).json({ message: "Logout failed" });
+    }
+  });
+
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const userData = registerSchema.parse(req.body);
+      
+      // Check if username or email already exists
+      const existingUser = await storage.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const existingEmail = await storage.getUserByEmail(userData.email);
+      if (existingEmail) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+
+      // Hash password
+      const hashedPassword = await hashPassword(userData.password);
+      
+      const user = await storage.createUser({
+        ...userData,
+        password: hashedPassword,
+        role: "user", // Default role for registration
+        isActive: true,
+      });
+
+      // Log activity
+      await storage.createActivity({
+        userId: user.id,
+        type: "user_registered",
+        description: `User ${user.username} registered`,
+        metadata: { userAgent: req.headers['user-agent'] || 'unknown' },
+      });
+
+      const token = generateToken({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        name: user.name,
+        email: user.email,
+      });
+
+      res.status(201).json({
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          name: user.name,
+          email: user.email,
+        },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Registration failed" });
     }
   });
 
@@ -372,15 +431,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Booking routes (require auth)
-  app.get("/api/bookings", authenticateToken, async (req, res) => {
+  app.get("/api/bookings", authenticateToken, async (req: AuthRequest, res) => {
     try {
-      const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
       let bookings;
       
-      if (userId) {
-        bookings = await storage.getBookingsByUser(userId);
+      // Regular users can only see their own bookings, admins see all
+      if (req.user!.role === 'admin') {
+        const userId = req.query.userId ? parseInt(req.query.userId as string) : undefined;
+        if (userId) {
+          bookings = await storage.getBookingsByUser(userId);
+        } else {
+          bookings = await storage.getAllBookings();
+        }
       } else {
-        bookings = await storage.getAllBookings();
+        bookings = await storage.getBookingsByUser(req.user!.id);
       }
       
       res.json(bookings);
@@ -404,36 +468,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/bookings", authenticateToken, async (req, res) => {
+  app.post("/api/bookings", authenticateToken, async (req: AuthRequest, res) => {
     try {
       const bookingData = insertBookingSchema.parse(req.body);
       
+      // Set the user ID from the authenticated user
+      const bookingWithUser = {
+        ...bookingData,
+        userId: req.user!.id,
+      };
+      
       // Check room availability
       const isAvailable = await storage.checkRoomAvailability(
-        bookingData.roomId,
-        bookingData.startTime,
-        bookingData.endTime
+        bookingWithUser.roomId,
+        bookingWithUser.startTime,
+        bookingWithUser.endTime
       );
       
       if (!isAvailable) {
-        return res.status(409).json({ message: "Room is not available for the selected time" });
+        return res.status(400).json({ message: "Room is not available for the selected time" });
       }
-      
-      const booking = await storage.createBooking(bookingData);
-      const bookingWithDetails = await storage.getBooking(booking.id);
+
+      // Get room to calculate cost
+      const room = await storage.getRoom(bookingWithUser.roomId);
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+
+      // Calculate duration in hours
+      const durationMs = new Date(bookingWithUser.endTime).getTime() - new Date(bookingWithUser.startTime).getTime();
+      const durationHours = Math.ceil(durationMs / (1000 * 60 * 60));
+      const totalCost = durationHours * room.hourlyRate;
+
+      const finalBooking = {
+        ...bookingWithUser,
+        totalCost,
+        status: 'confirmed' as const,
+      };
+
+      const booking = await storage.createBooking(finalBooking);
       
       // Log activity
       await storage.createActivity({
         userId: booking.userId,
         type: "booking_created",
-        description: `Booking "${booking.title}" was created`,
-        metadata: { bookingId: booking.id, roomId: booking.roomId }
+        description: `User ${req.user!.username} created booking for ${room.name}`,
+        metadata: { bookingId: booking.id, roomName: room.name },
       });
-      
-      // Broadcast update
-      broadcast({ type: "booking_created", data: bookingWithDetails });
-      
-      res.status(201).json(bookingWithDetails);
+
+      // Broadcast booking update
+      broadcast({
+        type: "booking_created",
+        booking,
+      });
+
+      res.status(201).json(booking);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid booking data", errors: error.errors });
@@ -493,7 +582,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/bookings/:id", authenticateToken, async (req, res) => {
+  app.delete("/api/bookings/:id", authenticateToken, async (req: AuthRequest, res) => {
     try {
       const id = parseInt(req.params.id);
       const booking = await storage.getBooking(id);
@@ -501,23 +590,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!booking) {
         return res.status(404).json({ message: "Booking not found" });
       }
-      
+
+      // Check if user owns the booking or is admin
+      if (booking.userId !== req.user!.id && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: "You can only cancel your own bookings" });
+      }
+
+      // Check if booking is in the future (can't cancel past bookings)
+      const now = new Date();
+      if (new Date(booking.startTime) <= now) {
+        return res.status(400).json({ message: "Cannot cancel bookings that have already started" });
+      }
+
       const deleted = await storage.deleteBooking(id);
-      
       if (!deleted) {
         return res.status(404).json({ message: "Booking not found" });
       }
-      
+
       // Log activity
       await storage.createActivity({
-        userId: booking.userId,
+        userId: req.user!.id,
         type: "booking_cancelled",
-        description: `Booking "${booking.title}" was cancelled`,
-        metadata: { bookingId: id, roomId: booking.roomId }
+        description: `User ${req.user!.username} cancelled booking for ${booking.room.name}`,
+        metadata: { bookingId: id, roomName: booking.room.name },
       });
       
-      // Broadcast update
-      broadcast({ type: "booking_deleted", data: { id } });
+      // Broadcast booking update
+      broadcast({
+        type: "booking_cancelled",
+        bookingId: id,
+      });
       
       res.status(204).send();
     } catch (error) {

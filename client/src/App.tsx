@@ -10,6 +10,7 @@ import Rooms from "@/pages/rooms";
 import Calendar from "@/pages/calendar";
 import Bookings from "@/pages/bookings";
 import Login from "@/pages/login";
+import Register from "@/pages/register";
 import Admin from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/useAuth";
@@ -29,7 +30,12 @@ function Router() {
   }
 
   if (!isAuthenticated) {
-    return <Login />;
+    return (
+      <Switch>
+        <Route path="/register" component={Register} />
+        <Route component={Login} />
+      </Switch>
+    );
   }
 
   return (

@@ -73,6 +73,10 @@ The build process creates a `dist` directory with:
 
 ## Recent Changes
 
+- June 24, 2025: User registration system implemented with email validation
+- June 24, 2025: Room rental functionality added for authenticated users
+- June 24, 2025: Booking cancellation with business rules (future bookings only)
+- June 24, 2025: User-specific booking views and permissions
 - June 23, 2025: PostgreSQL database integration completed
 - June 23, 2025: Admin authentication system implemented with JWT tokens
 - June 23, 2025: Admin panel created with full CRUD operations for users and rooms

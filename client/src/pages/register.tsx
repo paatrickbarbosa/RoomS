@@ -6,45 +6,67 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useLogin } from "@/hooks/useAuth";
-import { Eye, EyeOff, LogIn } from "lucide-react";
+import { useRegister } from "@/hooks/useAuth";
+import { Eye, EyeOff, UserPlus } from "lucide-react";
 import { Link } from "wouter";
 
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
+const registerSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email address"),
 });
 
-type LoginFormData = z.infer<typeof loginSchema>;
+type RegisterFormData = z.infer<typeof registerSchema>;
 
-export default function Login() {
+export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
-  const loginMutation = useLogin();
+  const registerMutation = useRegister();
 
-  const form = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+  const form = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
     defaultValues: {
       username: "",
       password: "",
+      name: "",
+      email: "",
     },
   });
 
-  const onSubmit = (data: LoginFormData) => {
-    loginMutation.mutate(data);
+  const onSubmit = (data: RegisterFormData) => {
+    registerMutation.mutate(data);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
+          <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
           <CardDescription>
-            Enter your credentials to access RoomSync
+            Sign up to start booking meeting rooms
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Full Name</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Enter your full name" 
+                        {...field}
+                        disabled={registerMutation.isPending}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="username"
@@ -53,9 +75,28 @@ export default function Login() {
                     <FormLabel>Username</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="Enter username" 
+                        placeholder="Choose a username" 
                         {...field}
-                        disabled={loginMutation.isPending}
+                        disabled={registerMutation.isPending}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="email"
+                        placeholder="Enter your email" 
+                        {...field}
+                        disabled={registerMutation.isPending}
                       />
                     </FormControl>
                     <FormMessage />
@@ -73,9 +114,9 @@ export default function Login() {
                       <div className="relative">
                         <Input 
                           type={showPassword ? "text" : "password"}
-                          placeholder="Enter password" 
+                          placeholder="Create a password" 
                           {...field}
-                          disabled={loginMutation.isPending}
+                          disabled={registerMutation.isPending}
                         />
                         <Button
                           type="button"
@@ -83,7 +124,7 @@ export default function Login() {
                           size="sm"
                           className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                           onClick={() => setShowPassword(!showPassword)}
-                          disabled={loginMutation.isPending}
+                          disabled={registerMutation.isPending}
                         >
                           {showPassword ? (
                             <EyeOff className="h-4 w-4" />
@@ -101,14 +142,14 @@ export default function Login() {
               <Button 
                 type="submit" 
                 className="w-full" 
-                disabled={loginMutation.isPending}
+                disabled={registerMutation.isPending}
               >
-                {loginMutation.isPending ? (
-                  "Signing in..."
+                {registerMutation.isPending ? (
+                  "Creating account..."
                 ) : (
                   <>
-                    <LogIn className="mr-2 h-4 w-4" />
-                    Sign In
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Create Account
                   </>
                 )}
               </Button>
@@ -117,20 +158,13 @@ export default function Login() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Don't have an account?{" "}
-              <Link href="/register">
+              Already have an account?{" "}
+              <Link href="/login">
                 <Button variant="link" className="p-0 h-auto font-normal">
-                  Sign up here
+                  Sign in here
                 </Button>
               </Link>
             </p>
-            
-            <div className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-              <p>Admin credentials:</p>
-              <p className="font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded mt-1">
-                admin / admin123
-              </p>
-            </div>
           </div>
         </CardContent>
       </Card>
